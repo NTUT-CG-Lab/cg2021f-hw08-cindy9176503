@@ -24,12 +24,14 @@
     </style>
   </head>
   <body>
-    <div id="info"></div>
+    <div id="info">
+      <input type="file" id = "fileInput" />
+    </div>
     <script src="scoreoutputer.min.js"></script>
     <script>
       // 建構子 ScoreOutputer 接受一個字串，該字串為 csv 的檔案名稱
       // 以下面範例，檔名就為 "109598105(總分: 6).csv"
-      var so = new ScoreOutputer("109598105");
+      var so = new ScoreOutputer("110598068");
       so.installCSS(function () {
         // 安裝 bootstrap 的 css，如果在 html 上方引用 bootstrap 5.1.1 的話就不用使用 installCSS ，注意一定要 bootstrap css 5.1.1 版
         // installCSS 接收一個 callback 當作參數，作為成功安裝 bootstrap css 的回呼函式
@@ -42,8 +44,8 @@
         //addChild 要比 renderModal 先呼叫
         so.addChild("產生XYZ Slice gui", 2, true);
         so.addChild("呈現nrrd格式模型切片", 2, true);
-        so.addChild("可以選擇產生的模型", 2, false);
-        so.addChild("呈現raw、dat格式模型切片", 2, false);
+        so.addChild("可以選擇產生的模型", 2, true);
+        so.addChild("呈現raw、dat格式模型切片", 2, true);
         so.addChild("可將指定pvm檔轉raw並可成功開啟", 2, false);
 
         //產生自評表，參數如下所示
@@ -108,8 +110,201 @@
         gui;
       let modelCount = 0;
 
-      init();
-      animate();
+      // init();
+      // animate();
+
+      var openFile = function(event) {
+        var input = event.target.files[0];
+        var reader = new FileReader();
+        let filename = input.name;
+        let d = filename.split(".");
+        let m = filename.split("_");
+        if(d[1] == "nrrd") {
+
+          const loader = new NRRDLoader();
+          let nrrdModelName = "./models/nrrd/" + filename;
+          loader.load(nrrdModelName, function(volume) {
+            const geometry = new THREE.BoxGeometry(
+              volume.xLength,
+              volume.yLength,
+              volume.zLength
+            );
+
+            if(modelCount != 0) {
+              scene.remove(box);
+              scene.remove(cube);
+            }
+
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00});
+            cube = new THREE.Mesh(geometry, material);
+            cube.visible = false;
+            box = new THREE.BoxHelper(cube);
+            scene.add(box);
+            box.applyMatrix4(volume.matrix);
+            scene.add(cube);
+
+            //z plane
+            sliceZ = volume.extractSlice(
+              "z",
+              Math.floor(volume.RASDimensions[2] / 4)
+            );
+            scene.add(sliceZ.mesh);
+
+            //y plane
+            sliceY = volume.extractSlice(
+              "y",
+              Math.floor(volume.RASDimensions[1] / 2)
+            );
+            scene.add(sliceY.mesh);
+
+            //x plane
+            sliceX = volume.extractSlice(
+              "x",
+              Math.floor(volume.RASDimensions[0] / 2)
+            );
+            scene.add(sliceX.mesh);
+
+            gui
+              .add(sliceX, "index", 0, volume.RASDimensions[0], 1)
+              .name("indexX")
+              .onChange(function () {
+                sliceX.repaint.call(sliceX);
+              });
+            gui
+              .add(sliceY, "index", 0, volume.RASDimensions[1], 1)
+              .name("indexY")
+              .onChange(function () {
+                sliceY.repaint.call(sliceY);
+              });
+            gui
+              .add(sliceZ, "index", 0, volume.RASDimensions[2], 1)
+              .name("indexZ")
+              .onChange(function () {
+                sliceZ.repaint.call(sliceZ);
+              });
+          });
+        }else if(d[1] == "dat" || d[1] == "raw") {
+          let volDims = [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+          let bit = m[4];
+          reader.onload = function() {
+            var arrayBuffer = reader.result;
+            if(bit == "uint8") {
+              var arraybuffer = new Uint8Array(arrayBuffer);
+            }
+
+            let volume = new Volume(
+              volDims[0],
+              volDims[1],
+              volDims[2],
+              bit,
+              arrayBuffer
+            );
+
+            const min_max = volume.computeMinMax();
+            const min = min_max[0];
+            const max = min_max[1];
+
+            volume.windowLow = min;
+            volume.windowHigh = max;
+
+            volume.matrix = new Matrix4();
+            const transitionMatrix = new Matrix4();
+            volume.inverseMatrix = new Matrix4();
+            volume.inverseMatrix.copy(volume.matrix).invert();
+            volume.RASDimensions = new Vector3(
+              volume.xLength,
+              volume.yLength,
+              volume.zLength
+            )
+
+            .applyMatrix4(volume.matrix)
+            .round()
+            .toArray()
+            .map(Math.abs);
+
+            if(volume.lowerThreshold == -Infinity) {
+              volume.lowerThreshold = min;
+            }
+
+            if(volume.lowerThreshold == Infinity) {
+              volume.lowerThreshold = max;
+            }
+
+            const geometry = new THREE.BoxGeometry(
+              volume.xLength,
+              volume.yLength,
+              volume.zLength
+            );
+
+            if(modelCount != 0) {
+              scene.remove(box);
+              scene.remove(cube);
+            }
+
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00});
+            cube = new THREE.Mesh(geometry, material);
+            cube.visible = false;
+            box = new THREE.BoxHelper(cube);
+            scene.add(box);
+            box.applyMatrix4(volume.matrix);
+            scene.add(cube);
+
+            //z plane
+            sliceZ = volume.extractSlice(
+              "z",
+              Math.floor(volume.RASDimensions[2] / 4)
+            );
+            scene.add(sliceZ.mesh);
+
+            //y plane
+            sliceY = volume.extractSlice(
+              "y",
+              Math.floor(volume.RASDimensions[1] / 2)
+            );
+            scene.add(sliceY.mesh);
+
+            //x plane
+            sliceX = volume.extractSlice(
+              "x",
+              Math.floor(volume.RASDimensions[0] / 2)
+            );
+            scene.add(sliceX.mesh);
+
+            gui
+              .add(sliceX, "index", 0, volume.RASDimensions[0], 1)
+              .name("indexX")
+              .onChange(function () {
+                sliceX.repaint.call(sliceX);
+              });
+            gui
+              .add(sliceY, "index", 0, volume.RASDimensions[1], 1)
+              .name("indexY")
+              .onChange(function () {
+                sliceY.repaint.call(sliceY);
+              });
+            gui
+              .add(sliceZ, "index", 0, volume.RASDimensions[2], 1)
+              .name("indexZ")
+              .onChange(function () {
+                sliceZ.repaint.call(sliceZ);
+              });
+          };
+          reader.readAsArrayBuffer(input);
+        }
+
+        if(modelCount == 0) {
+          gui = new GUI();
+        }else{
+          gui.domElement.remove();
+          gui = new GUI();
+          // if(sliceX) {
+            scene.remove(sliceX.mesh);
+            scene.remove(sliceY.mesh);
+            scene.remove(sliceZ.mesh);
+          // }          
+        }
+        modelCount ++;
+      }
 
       function init() {
         camera = new THREE.PerspectiveCamera(
@@ -132,66 +327,6 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
         dirLight.position.set(200, 200, 200);
         scene.add(dirLight);
-
-        //nrrd model
-        const loader = new NRRDLoader();
-        loader.load("models/nrrd/heart1.nrrd", function (volume) {
-          //box helper to see the extend of the volume
-          const geometry = new THREE.BoxGeometry(
-            volume.xLength,
-            volume.yLength,
-            volume.zLength
-          );
-
-          //z plane
-          const sliceZ = volume.extractSlice(
-            "z",
-            Math.floor(volume.RASDimensions[2] / 4)
-          );
-          scene.add(sliceZ.mesh);
-
-          //y plane
-          const sliceY = volume.extractSlice(
-            "y",
-            Math.floor(volume.RASDimensions[1] / 2)
-          );
-          scene.add(sliceY.mesh);
-
-          //x plane
-          const sliceX = volume.extractSlice(
-            "x",
-            Math.floor(volume.RASDimensions[0] / 2)
-          );
-          scene.add(sliceX.mesh);
-
-          gui
-            .add(sliceX, "index", 0, volume.RASDimensions[0], 1)
-            .name("indexX")
-            .onChange(function () {
-              sliceX.repaint.call(sliceX);
-            });
-          gui
-            .add(sliceY, "index", 0, volume.RASDimensions[1], 1)
-            .name("indexY")
-            .onChange(function () {
-              sliceY.repaint.call(sliceY);
-            });
-          gui
-            .add(sliceZ, "index", 0, volume.RASDimensions[2], 1)
-            .name("indexZ")
-            .onChange(function () {
-              sliceZ.repaint.call(sliceZ);
-            });
-
-          //box border
-          const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-          const cube = new THREE.Mesh(geometry, material);
-          cube.visible = false;
-          const box = new THREE.BoxHelper(cube);
-          scene.add(box);
-          box.applyMatrix4(volume.matrix);
-          scene.add(cube);
-        });
 
         // renderer
 
@@ -269,6 +404,15 @@
         axes2 = new THREE.AxesHelper(100);
         scene2.add(axes2);
       }
+
+      window.onload = function() {
+        document
+          .getElementById("fileInput")
+          .addEventListener("change", openFile);
+      
+        init();
+        animate();
+      };
     </script>
     <div id="inset"></div>
   </body>
